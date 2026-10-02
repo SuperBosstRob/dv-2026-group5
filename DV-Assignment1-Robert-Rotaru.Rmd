@@ -59,9 +59,30 @@ source("data/get-data.R")
 ### Prepare data
 
 ```{r data-prep-1}
+
+school_provider <- eindscores |>
+  select(INSTELLINGSCODE, matches("_(AANTAL|GEM)$")) |>
+  pivot_longer(
+    cols = matches("_(AANTAL|GEM)$"),
+    names_to = c("provider", ".value"),
+    names_pattern = "(.+)_(AANTAL|GEM)"
+  ) |>
+  # DUO writes "<5" for small counts -> NA
+  mutate(AANTAL = as.numeric(AANTAL)) |>
+  filter(!is.na(AANTAL), AANTAL > 0, !is.na(GEM), GEM > 0) |>
+  group_by(INSTELLINGSCODE, provider) |>
+  summarise(AANTAL = sum(AANTAL), .groups = "drop")
+
+# most schools only use one provider - take whichever tested the most students
+primary_provider <- school_provider |>
+  group_by(INSTELLINGSCODE) |>
+  slice_max(AANTAL, n = 1, with_ties = FALSE) |>
+  ungroup() |>
+  select(INSTELLINGSCODE, provider)
+
 ```
 
-<!-- ... add more code chunks as needed. -->
+
 
 ### Create plot 
 ```{r plot-1}
