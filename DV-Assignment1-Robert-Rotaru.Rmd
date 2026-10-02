@@ -132,7 +132,6 @@ school_data <- ref_levels |>
 
 ### Create plot 
 ```{r plot-1}
-
 ggplot(school_data[school_data$provider %in% c("IEP", "LIB", "ROUTE8"), ], aes(x = score, fill = provider, colour = provider)) +
   geom_density(alpha = 0.4) +
   scale_x_continuous(
@@ -146,11 +145,56 @@ ggplot(school_data[school_data$provider %in% c("IEP", "LIB", "ROUTE8"), ], aes(x
     colour = "Test provider"
   ) +
   theme_minimal()
+```
+
+
+```{r test }
+
+sort(unique(school_data$schoolweging))
 
 ```
+
+
+
 ```{r plot-2}
 
+# Prep
+plot_data <- school_data |>
+  filter(provider %in% c("IEP", "LIB", "ROUTE8")) |>
+  mutate(weight_bin = cut(schoolweging, breaks = c(22, 26, 30, 34, 38, 40), labels = c("22", "26", "30", "34", "38"))) |>
+  filter(!is.na(weight_bin)) |>
+  group_by(provider, weight_bin) |>
+  summarise(mean_score = mean(score, na.rm = TRUE), .groups = "drop")
 
+nat_avg <- plot_data |>
+  group_by(weight_bin) |>
+  summarise(mean_score = mean(mean_score, na.rm = TRUE), .groups = "drop")
+
+n_labels <- school_data |>
+  filter(provider %in% c("IEP", "LIB", "ROUTE8")) |>
+  group_by(provider) |>
+  summarise(n = sum(n_students)) |>
+  mutate(label = paste0(provider, "\n(n = ", format(n, big.mark = ","), ")"))
+
+# Plot
+ggplot(plot_data, aes(x = weight_bin, y = mean_score,
+                      colour = provider, group = provider)) +
+  geom_line() +
+  geom_point(size = 3) +
+  geom_line(data = nat_avg, aes(x = weight_bin, y = mean_score, group = 1),
+            colour = "grey30", linetype = "dashed", linewidth = 1,
+            inherit.aes = FALSE) +
+  geom_label(data = tail(nat_avg, 1),
+             aes(x = weight_bin, y = mean_score, label = "National average"),
+             inherit.aes = FALSE, fontface = "italic", size = 3) +
+  scale_y_continuous(limits = c(0, 100), breaks = c(0, 25, 50, 75, 100)) +
+  labs(x = "School weighting (higher = more disadvantaged)",
+       y = "% reaching target level", colour = "Test provider") +
+  scale_colour_manual(
+  values = c("IEP" = "#E07040", "LIB" = "#4472C4", "ROUTE8" = "#4CAF7D"),
+  labels = setNames(n_labels$label, n_labels$provider) ) + 
+  theme_minimal() +
+  theme(legend.position = "top")
 
 ```
 
