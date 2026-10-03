@@ -131,8 +131,8 @@ school_data <- ref_levels |>
 
 
 ### Create plot 
-```{r plot-1}
-ggplot(school_data[school_data$provider %in% c("IEP", "LIB", "ROUTE8"), ], aes(x = score, fill = provider, colour = provider)) +
+```{r}
+density_plot <- ggplot(school_data[school_data$provider %in% c("IEP", "LIB", "ROUTE8"), ], aes(x = score, fill = provider, colour = provider)) +
   geom_density(alpha = 0.4) +
   scale_x_continuous(
     limits = c(0, 100),
@@ -145,18 +145,6 @@ ggplot(school_data[school_data$provider %in% c("IEP", "LIB", "ROUTE8"), ], aes(x
     colour = "Test provider"
   ) +
   theme_minimal()
-```
-
-
-```{r test }
-
-sort(unique(school_data$schoolweging))
-
-```
-
-
-
-```{r plot-2}
 
 # Prep
 plot_data <- school_data |>
@@ -177,7 +165,7 @@ n_labels <- school_data |>
   mutate(label = paste0(provider, "\n(n = ", format(n, big.mark = ","), ")"))
 
 # Plot
-ggplot(plot_data, aes(x = weight_bin, y = mean_score,
+line_plot <- ggplot(plot_data, aes(x = weight_bin, y = mean_score,
                       colour = provider, group = provider)) +
   geom_line() +
   geom_point(size = 3) +
@@ -196,7 +184,25 @@ ggplot(plot_data, aes(x = weight_bin, y = mean_score,
   theme_minimal() +
   theme(legend.position = "top")
 
+# Text plot
+text_plot <- ggplot() +
+  annotate("text", x = 0.5, y = 0.5,
+           label = "LIB has the highest percentage of students reaching the target level,\nand Route8 the lowest. This gap holds even when accounting for the socio-economic status of schools.",
+           size = 4.5, fontface = "bold", hjust = 0.5, vjust = 0.5) +
+  theme_void()
+
+# Combine
+plot_grid(
+  text_plot,
+  plot_grid(density_plot + theme(legend.position = "none"),
+            line_plot,
+            ncol = 2),
+  nrow = 2,
+  rel_heights = c(2, 5)
+)
+
 ```
+
 
 
 ## Part B: Interactive visualizations with plotly
