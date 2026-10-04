@@ -554,7 +554,6 @@ profile_plotly <- ggplotly(
   )
 
 profile_plotly
-lint(rstudioapi::getSourceEditorContext()$path)
 ```
 
 
@@ -564,4 +563,6 @@ The exploratory visualization shows that Amsterdam schools occupy all four possi
 
 ---
 
-**Before submitting:** run the lintr check on this file, knit it, and push your work to GitHub.
+```{r lint}
+lint(rstudioapi::getSourceEditorContext()$path)
+```
