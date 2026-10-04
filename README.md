@@ -8,7 +8,7 @@
   first time.
 -->
 
-# Your Project Title
+# Beyond the Benchmark
 
 **Group members:**
 
@@ -16,13 +16,16 @@
 - Danielius Rimas
 - Nicusor Simionescu
 
-**Research question:** One sentence stating what you're investigating.
+**Research question:** Among primary schools in Amsterdam in 2024-2025, which schools show stronger attainment in mathematics versus reading (or the other way around), compared with similarly disadvantaged schools?
 
-**Level:** Analytics / Inference / Prediction 
+**Level:** Analytics because the goal is to describe and compare school performance from existing data, not to estimate a relationship or predict future outcomes.
 
 ## About this project
 
-A short paragraph (3-5 sentences) on what this project looks at in the DUO doorstroomtoets (transfer test) data, and what you're trying to communicate with your final visualization.
+This project investigates how primary schools in Amsterdam perform in mathematics and reading relative to Dutch schools with a similar schoolweging, rather than comparing raw achievement percentages alone.
+We calculate each school’s relative performance for maths 1S and reading 2F, allowing schools to be identified as stronger in maths, stronger in reading, strong in both, or below benchmark in both.
+The final goal is to present these patterns in a geographic visualization that is useful for municipal education officers and school boards.
+
 
 ## Cloning this project
 
