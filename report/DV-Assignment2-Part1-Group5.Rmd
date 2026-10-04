@@ -1,0 +1,567 @@
+---
+title: "DV Assignment 2, Part 1: Beyond the Benchmark"
+author: "Group 5: Danielius Rimas, Robert Rotaru, Nicusor Simionescu"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+<!--
+HOW TO KNIT THIS FILE
+
+1. Open your group project in RStudio first (the `Project:` button in the
+   top right should show your repo name). Keep this file in `report/`.
+2. Click the `Knit` button at the top of this file (or press
+   Ctrl/Cmd + Shift + K). An .html file with the same name appears next to
+   this .Rmd in `report/`.
+3. Knitting starts from a clean R session: it only knows what is created
+   *in this file*. The setup chunk below sources scripts/00-packages.R and
+   scripts/01-get-data.R, so packages and data are always loaded. The first
+   knit downloads the data, so you need an internet connection.
+
+If knitting fails:
+- "could not find function": the package isn't loaded - add it to
+  scripts/00-packages.R.
+- "object not found": you created it in the Console, not in this file (or
+  in a script that this file doesn't source).
+- "cannot open file": check that the project is open, and use
+  here("folder", "file") for paths instead of typing them out.
+- Check that all code chunks have unique labels.
+- Google the error message you receive, as it often provides clues about
+  what went wrong.
+
+This comment does not show up in the knitted .html, so you can leave it here.
+-->
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# clear environment so knitting only depends on what's in this file
+rm(list = ls())
+
+# installs (if missing) and loads every package this project uses - add any
+# new packages to scripts/00-packages.R, not here
+source("../scripts/00-packages.R")
+
+# downloads the data into data/raw/ if you don't already have it, then loads
+# eindscores, referentieniveaus, schooladviezen and schoolweging into this
+# session - see scripts/01-get-data.R for what each one contains
+source(here("scripts", "01-get-data.R"))
+```
+
+## Research question
+
+*What is your research question? Is it a question of analytics, inference or prediction? Who is the target audience for your final visualization, and how does that shape your choices?*
+
+#### RQ
+Among primary schools in Amsterdam in 2024-2025, which schools show stronger attainment in mathematics versus reading (or the other way around), compared with similarly disadvantaged schools?
+
+#### Type of Analysis
+We will compare each school's percentage of pupils reaching the higher reference level in mathematics (1S) and reading (2F) with the typical performance of Dutch schools with a similar schoolweging. As such, the RQ is a question of analytics because the goal is to describe and compare school performance from existing data, not to estimate a relationship or predict future outcomes.
+
+#### Target Audience
+This information is valuable for the educational inspectorate of Amsterdam and possibly local school boards.
+
+
+## Exploratory process
+
+*Describe how you explored the data. Include at least one exploratory visualization below, and a short note on what it shows, and what you learned from it about your research question.*
+
+
+Incited by the idea of a new approach, we dived right in checking how many schools are available per municipality, and looked only at the top 10. This was done with ambition of analyzing a municipality with more data.
+
+```{r municipalities}
+referentieniveaus |>
+  distinct(
+    INSTELLINGSCODE,
+    VESTIGINGSCODE,
+    GEMEENTENAAM
+  ) |>
+  count(
+    GEMEENTENAAM,
+    sort = TRUE,
+    name = "n_schools"
+  ) |>
+  slice_head(n = 10)
+
+```
+As such, our winner and the topic of our conversation, Amsterdam, with 203 schools. 
+
+
+For each school in Amsterdam, we computed the percentage of students reaching the higher reference level in mathematics (1S) and reading (2F). Counts reported as <5 were temporarily replaces by 2.5, the midpoint of the possible values. The sensitivity of the results to this assumption will be examined later.
+
+```{r amsterdam_scores}
+amsterdam_results <- referentieniveaus |>
+  # Keep only schools in Amsterdam
+  filter(GEMEENTENAAM == "Amsterdam") |>
+
+  # Replace suppressed counts (<5) with 2.5
+  mutate(
+    across(
+      c(
+        REKENEN_LAGER1F,
+        REKENEN_1F,
+        REKENEN_1S,
+        REKENEN_2F,
+        LV_LAGER1F,
+        LV_1F,
+        LV_2F
+      ),
+      \(x) replace(x, x == "<5", "2.5")
+    )
+  ) |>
+
+  # Convert the count columns from character to numeric
+  mutate(
+    across(
+      c(
+        REKENEN_LAGER1F,
+        REKENEN_1F,
+        REKENEN_1S,
+        REKENEN_2F,
+        LV_LAGER1F,
+        LV_1F,
+        LV_2F
+      ),
+      as.numeric
+    )
+  ) |>
+
+  # Calculate totals and percentages
+  mutate(
+    math_total =
+      REKENEN_LAGER1F +
+      REKENEN_1F +
+      REKENEN_1S +
+      REKENEN_2F,
+
+    reading_total =
+      LV_LAGER1F +
+      LV_1F +
+      LV_2F,
+
+    math_1s_pct =
+      100 * REKENEN_1S / math_total,
+
+    reading_2f_pct =
+      100 * LV_2F / reading_total
+  )
+
+amsterdam_results |>
+  select(
+    INSTELLINGSNAAM_VESTIGING,
+    math_1s_pct,
+    reading_2f_pct
+  )
+
+```
+Because mathematics 1S and reading 2F are different achievement thresholds, we did not compare their raw percentages directly. Instead, schools were compared with Dutch schools having a similar school weight. For each subject, we calculated how many percentage points a school was above or below the benchmark for its school-weighting group. The benchmarks are national benchmarks, so the comparisons are to Dutch schools with similar school weight, not to Amsterdam schools with similar school weight. This can allow to later expand to the full country. Moreover, it saves us the caveat of looking (unknowingly) at a special case that Amsterdam might represent.
+
+
+```{r scores_benchmarks}
+# 1. Prepare maths and reading percentages for ALL Dutch schools
+achievement_data <- referentieniveaus |>
+  mutate(
+    across(
+      c(
+        REKENEN_LAGER1F,
+        REKENEN_1F,
+        REKENEN_1S,
+        REKENEN_2F,
+        LV_LAGER1F,
+        LV_1F,
+        LV_2F
+      ),
+      \(x) replace(x, x == "<5", "2.5")
+    )
+  ) |>
+  mutate(
+    across(
+      c(
+        REKENEN_LAGER1F,
+        REKENEN_1F,
+        REKENEN_1S,
+        REKENEN_2F,
+        LV_LAGER1F,
+        LV_1F,
+        LV_2F
+      ),
+      as.numeric
+    )
+  ) |>
+  mutate(
+    math_total =
+      REKENEN_LAGER1F +
+      REKENEN_1F +
+      REKENEN_1S +
+      REKENEN_2F,
+
+    reading_total =
+      LV_LAGER1F +
+      LV_1F +
+      LV_2F,
+
+    math_1s_pct =
+      100 * REKENEN_1S / math_total,
+
+    reading_2f_pct =
+      100 * LV_2F / reading_total
+  )
+
+
+# 2. Prepare school weighting data
+school_weight_data <- schoolweging |>
+  mutate(
+    INSTELLINGSCODE = str_extract(OVT, "^[^|]+")
+  ) |>
+  select(
+    INSTELLINGSCODE,
+    schoolweging
+  )
+
+school_weight_data <- school_weight_data |>
+  add_count(
+    INSTELLINGSCODE,
+    name = "n_locations"
+  ) |>
+  filter(n_locations == 1) |>
+  select(-n_locations)
+
+achievement_data <- achievement_data |>
+  add_count(
+    INSTELLINGSCODE,
+    name = "n_locations"
+  ) |>
+  filter(n_locations == 1) |>
+  select(-n_locations)
+
+
+school_data <- achievement_data |>
+  inner_join(
+    school_weight_data,
+    by = "INSTELLINGSCODE"
+  )
+
+
+# 3. Put schools with similar schoolweging into the same group
+school_data <- school_data |>
+  mutate(
+    weighting_band =
+      round(schoolweging / 2) * 2
+  )
+
+
+# 4. Calculate national benchmarks within each school-weighting group
+benchmarks <- school_data |>
+  group_by(weighting_band) |>
+  summarise(
+    benchmark_math =
+      100 * sum(REKENEN_1S, na.rm = TRUE) /
+      sum(math_total, na.rm = TRUE),
+
+    benchmark_reading =
+      100 * sum(LV_2F, na.rm = TRUE) /
+      sum(reading_total, na.rm = TRUE),
+
+    .groups = "drop"
+  )
+
+school_data <- school_data |>
+  left_join(
+    benchmarks,
+    by = "weighting_band"
+  ) |>
+  mutate(
+    relative_math =
+      math_1s_pct - benchmark_math,
+
+    relative_reading =
+      reading_2f_pct - benchmark_reading
+  )
+
+# KEEP AMSTERDAM SCHOOLS ONLY
+amsterdam_results <- school_data |>
+  filter(GEMEENTENAAM == "Amsterdam")
+
+amsterdam_results |>
+  select(
+    INSTELLINGSNAAM_VESTIGING,
+    schoolweging,
+    weighting_band,
+    math_1s_pct,
+    benchmark_math,
+    relative_math,
+    reading_2f_pct,
+    benchmark_reading,
+    relative_reading
+  )
+
+
+
+
+```
+
+
+
+
+```{r amsterdam-profile-plot, fig.width=7, fig.height=8, warning=FALSE, message=FALSE}
+
+# Use the average number of pupils tested across maths and reading
+amsterdam_results <- amsterdam_results |>
+  mutate(
+    n_students = (math_total + reading_total) / 2
+  )
+
+x_min <- min(amsterdam_results$relative_math, na.rm = TRUE)
+x_max <- max(amsterdam_results$relative_math, na.rm = TRUE)
+y_min <- min(amsterdam_results$relative_reading, na.rm = TRUE)
+y_max <- max(amsterdam_results$relative_reading, na.rm = TRUE)
+
+x_pad <- 0.06 * (x_max - x_min)
+y_pad <- 0.06 * (y_max - y_min)
+
+# Create achievement profile
+amsterdam_results <- amsterdam_results |>
+  mutate(
+    profile = case_when(
+      relative_math >= 0 & relative_reading >= 0 ~
+        "Strong in both",
+
+      relative_math >= 0 & relative_reading < 0 ~
+        "Maths strength",
+
+      relative_math < 0 & relative_reading >= 0 ~
+        "Reading strength",
+
+      TRUE ~
+        "Below benchmark in both"
+    )
+  )
+
+# Create hover information
+amsterdam_results <- amsterdam_results |>
+  mutate(
+    hover_text = paste0(
+      "<b>", INSTELLINGSNAAM_VESTIGING, "</b>",
+      "<br><br>",
+
+      "<b>Pupils tested</b>",
+      "<br>",
+      "Mathematics: ", round(math_total),
+      "<br>",
+      "Reading: ", round(reading_total),
+
+      "<br><br>",
+
+      "<b>Mathematics</b>",
+      "<br>",
+      "1S attainment: ", round(math_1s_pct, 1), "%",
+      "<br>",
+      "Benchmark: ", round(benchmark_math, 1), "%",
+      "<br>",
+      "Relative to benchmark: ",
+      if_else(relative_math >= 0, "+", ""),
+      round(relative_math, 1), " percentage points",
+
+      "<br><br>",
+
+      "<b>Reading</b>",
+      "<br>",
+      "2F attainment: ", round(reading_2f_pct, 1), "%",
+      "<br>",
+      "Benchmark: ", round(benchmark_reading, 1), "%",
+      "<br>",
+      "Relative to benchmark: ",
+      if_else(relative_reading >= 0, "+", ""),
+      round(relative_reading, 1), " percentage points",
+
+      "<br><br>",
+      "<b>Profile:</b> ", profile
+    )
+  )
+
+# Determine plot limits for quadrant labels
+x_limit <- max(
+  abs(amsterdam_results$relative_math),
+  na.rm = TRUE
+)
+
+y_limit <- max(
+  abs(amsterdam_results$relative_reading),
+  na.rm = TRUE
+)
+
+# Create ggplot
+profile_plot <- amsterdam_results |>
+  ggplot(
+    aes(
+      x = relative_math,
+      y = relative_reading,
+      size = n_students,
+      colour = profile,
+      text = hover_text
+    )
+  ) +
+
+  # National benchmark lines
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    linewidth = 0.5,
+    colour = "grey50"
+  ) +
+
+  geom_vline(
+    xintercept = 0,
+    linetype = "dashed",
+    linewidth = 0.5,
+    colour = "grey50"
+  ) +
+
+  # Schools
+  geom_point(
+    alpha = 0.75
+  ) +
+
+  # Colourblind-friendly profile colours
+  scale_colour_manual(
+    values = c(
+      "Strong in both" = "#009E73",
+      "Maths strength" = "#0072B2",
+      "Reading strength" = "#CC79A7",
+      "Below benchmark in both" = "#D55E00"
+    )
+  ) +
+
+  # Smaller point-size range
+  scale_size_continuous(
+    range = c(2.5, 7),
+    name = "Average pupils tested"
+  ) +
+
+  scale_x_continuous(
+    expand = expansion(mult = 0.08)
+  ) +
+
+  scale_y_continuous(
+    expand = expansion(mult = 0.08)
+  ) +
+
+  # Quadrant labels
+  annotate(
+    "text",
+    x = x_max - x_pad,
+    y = y_max - y_pad,
+    label = "Strong in both",
+    fontface = "bold",
+    colour = "grey35",
+    size = 3.5,
+    hjust = 1
+  ) +
+
+  annotate(
+    "text",
+    x = x_min + x_pad,
+    y = y_max - y_pad,
+    label = "Reading strength",
+    fontface = "bold",
+    colour = "grey35",
+    size = 3.5,
+    hjust = 0
+  ) +
+
+  annotate(
+    "text",
+    x = x_max - x_pad,
+    y = y_min + y_pad,
+    label = "Maths strength",
+    fontface = "bold",
+    colour = "grey35",
+    size = 3.5,
+    hjust = 1
+  ) +
+
+  annotate(
+    "text",
+    x = x_min + x_pad,
+    y = y_min + y_pad,
+    label = "Below benchmark\nin both",
+    fontface = "bold",
+    colour = "grey35",
+    size = 3.5,
+    hjust = 0
+  ) +
+
+  labs(
+    title = "Amsterdam schools show different achievement profiles",
+    subtitle = paste0(
+      "Mathematics and reading performance relative to Dutch schools ",
+      "with similar school weighting\n",
+      "0 = benchmark for schools in the same school-weighting group"
+    ),
+    x = "Mathematics relative to benchmark (percentage points)",
+    y = "Reading relative to benchmark (percentage points)",
+    colour = "Achievement profile"
+  ) +
+
+  theme_minimal(base_size = 11) +
+
+  theme(
+    legend.position = "right",
+    legend.box = "vertical",
+    panel.grid.minor = element_blank(),
+
+    plot.title = element_text(
+      face = "bold",
+      size = 15
+    ),
+
+    plot.subtitle = element_text(
+      size = 10,
+      colour = "grey35"
+    ),
+
+    axis.title = element_text(
+      face = "bold"
+    )
+  )
+
+# Convert to interactive Plotly plot
+profile_plotly <- ggplotly(
+  profile_plot,
+  tooltip = "text",
+  width = 1000,
+  height = 750
+) |>
+  layout(
+    margin = list(
+      t = 95,
+      r = 230,
+      b = 70,
+      l = 80
+    ),
+    legend = list(
+      orientation = "v",
+      x = 1.02,
+      xanchor = "left",
+      y = 0.15,
+      yanchor = "bottom"
+    )
+  ) |>
+  config(
+    displaylogo = FALSE
+  )
+
+profile_plotly
+lint(rstudioapi::getSourceEditorContext()$path)
+```
+
+
+The exploratory visualization shows that Amsterdam schools occupy all four possible profiles: some perform relatively strongly in both subjects, some primarily in mathematics or reading, and others fall below their comparable-school benchmark in both. This suggests that a geographic visualization of these relative subject profiles could reveal meaningful local patterns that would be hidden by a simple ranking of schools
+
+
+
+---
+
+**Before submitting:** run the lintr check on this file, knit it, and push your work to GitHub.
