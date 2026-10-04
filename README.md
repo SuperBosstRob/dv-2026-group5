@@ -13,6 +13,8 @@
 **Group members:**
 
 - Robert Rotaru
+- Danielius Rimas
+- Nicusor Simionescu
 
 **Research question:** One sentence stating what you're investigating.
 
