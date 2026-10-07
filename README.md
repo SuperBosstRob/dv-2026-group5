@@ -18,7 +18,7 @@
 
 **Research question:** Among primary schools in Amsterdam in 2024-2025, which schools show stronger attainment in mathematics versus reading (or the other way around), compared with similarly disadvantaged schools?
 
-**Level:** Analytics because the goal is to describe and compare school performance from existing data, not to estimate a relationship or predict future outcomes.
+**Level:** Inferential because the goal is to infer the level of discrepancy between language and mathematics skills. 
 
 ## About this project
 
