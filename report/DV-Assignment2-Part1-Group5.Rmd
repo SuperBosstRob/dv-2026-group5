@@ -36,6 +36,9 @@ This comment does not show up in the knitted .html, so you can leave it here.
 -->
 
 ```{r setup, include = FALSE}
+
+R.version.string
+.libPaths()
 knitr::opts_chunk$set(echo = TRUE)
 # clear environment so knitting only depends on what's in this file
 rm(list = ls())
@@ -43,7 +46,6 @@ rm(list = ls())
 # installs (if missing) and loads every package this project uses - add any
 # new packages to scripts/00-packages.R, not here
 source("../scripts/00-packages.R")
-
 # downloads the data into data/raw/ if you don't already have it, then loads
 # eindscores, referentieniveaus, schooladviezen and schoolweging into this
 # session - see scripts/01-get-data.R for what each one contains
@@ -68,8 +70,22 @@ This information is valuable for the educational inspectorate of Amsterdam and p
 
 *Describe how you explored the data. Include at least one exploratory visualization below, and a short note on what it shows, and what you learned from it about your research question.*
 
+## Research question
 
-Incited by the idea of a new approach, we dived right in checking how many schools are available per municipality, and looked only at the top 10. This was done with ambition of analyzing a municipality with more data.
+#### RQ
+Among primary schools in Amsterdam in 2024-2025, which schools show stronger attainment in mathematics versus reading (or the other way around), compared with similarly disadvantaged schools?
+
+#### Type of Analysis
+We will compare each school's mathematics 1S and reading 2F attainment with the national relationship between these two measures, estimated among Dutch schools with a similar schoolweging. The fitted line is a descriptive benchmark, rather than a model for forecasting future outcomes. Our research question remains analytical: the goal is to identify schools whose subject profiles differ noticeably from the national pattern.
+
+#### Target Audience
+This information is valuable for the educational inspectorate of Amsterdam and possibly local school boards.
+
+
+## Exploratory process
+
+
+We first checked which municipalities had enough schools for comparisons. Amsterdam had 203 school locations in the initial municipality count. We then computed 1S mathematics and 2F reading attainment, replacing suppressed counts (`<5`) with 2.5 for this first analysis.
 
 ```{r municipalities}
 referentieniveaus |>
@@ -85,13 +101,11 @@ referentieniveaus |>
   ) |>
   slice_head(n = 10)
 
+
+
 ```
-As such, our winner and the topic of our conversation, Amsterdam, with 203 schools. 
 
-
-For each school in Amsterdam, we computed the percentage of students reaching the higher reference level in mathematics (1S) and reading (2F). Counts reported as <5 were temporarily replaces by 2.5, the midpoint of the possible values. The sensitivity of the results to this assumption will be examined later.
-
-```{r amsterdam_scores}
+```{r amsterdam_scores, include=FALSE}
 amsterdam_results <- referentieniveaus |>
   # Keep only schools in Amsterdam
   filter(GEMEENTENAAM == "Amsterdam") |>
@@ -156,10 +170,18 @@ amsterdam_results |>
   )
 
 ```
-Because mathematics 1S and reading 2F are different achievement thresholds, we did not compare their raw percentages directly. Instead, schools were compared with Dutch schools having a similar school weight. For each subject, we calculated how many percentage points a school was above or below the benchmark for its school-weighting group. The benchmarks are national benchmarks, so the comparisons are to Dutch schools with similar school weight, not to Amsterdam schools with similar school weight. This can allow to later expand to the full country. Moreover, it saves us the caveat of looking (unknowingly) at a special case that Amsterdam might represent.
+Mathematics 1S and reading 2F are different achievement thresholds, so their raw percentages 
+cannot be interpreted as interchangeable. Our first exploratory approach subtracted separate 
+national subject benchmarks within school-weighting groups. That exposed schools with different 
+relative strengths, but did not directly show whether their *combination* of mathematics and reading 
+outcomes was unusual.
+ The final visualization therefore uses a fitted national mathematics–reading relationship and prediction intervals,
+  estimated within school-weighting bands.
 
 
-```{r scores_benchmarks}
+```{r scores_benchmarks, include=FALSE}
+
+
 # 1. Prepare maths and reading percentages for ALL Dutch schools
 achievement_data <- referentieniveaus |>
   mutate(
@@ -211,37 +233,96 @@ achievement_data <- referentieniveaus |>
 
 
 # 2. Prepare school weighting data
+# BRIN codes can cover several schools, so we cannot join on BRIN alone.
 school_weight_data <- schoolweging |>
   mutate(
     INSTELLINGSCODE = str_extract(OVT, "^[^|]+")
   ) |>
-  select(
-    INSTELLINGSCODE,
-    schoolweging
-  )
-
-school_weight_data <- school_weight_data |>
-  add_count(
-    INSTELLINGSCODE,
-    name = "n_locations"
-  ) |>
-  filter(n_locations == 1) |>
-  select(-n_locations)
+  select(INSTELLINGSCODE, OVT, schoolweging) |>
+  add_count(INSTELLINGSCODE, name = "n_weight_locations")
 
 achievement_data <- achievement_data |>
-  add_count(
-    INSTELLINGSCODE,
-    name = "n_locations"
-  ) |>
-  filter(n_locations == 1) |>
-  select(-n_locations)
+  add_count(INSTELLINGSCODE, name = "n_achievement_locations")
 
-
-school_data <- achievement_data |>
+# For institutions that are unique in BOTH sources, the old join is safe.
+single_location_data <- achievement_data |>
+  filter(n_achievement_locations == 1) |>
   inner_join(
-    school_weight_data,
+    school_weight_data |>
+      filter(n_weight_locations == 1) |>
+      select(INSTELLINGSCODE, schoolweging),
     by = "INSTELLINGSCODE"
-  )
+  ) |>
+  select(-n_achievement_locations)
+
+# These 21 Amsterdam locations were excluded by the old join.
+# Matched to OVT after checking names, school locations and postcodes.
+# 'C1' / 'C2' are Inspectorate clusters, NOT DUO vestigingscodes.
+amsterdam_ovt_lookup <- tibble::tribble(
+  ~INSTELLINGSCODE, ~VESTIGINGSCODE, ~OVT,
+  "04IU", "00", "04IU|C1",
+  "07TJ", "00", "07TJ|C1",
+  "07TJ", "02", "07TJ|C2",
+  "09DD", "00", "09DD|C1",
+  "14JC", "00", "14JC|C1",
+  "14JC", "01", "14JC|C2",
+  "18UH", "00", "18UH|C1",
+  "18UH", "01", "18UH|C2",
+  "18WK", "00", "18WK|C1",
+  "18YT", "00", "18YT|C1",
+  "20SK", "00", "20SK|C1",
+  "20SL", "00", "20SL|C1",
+  "20TR", "00", "20TR|C1",
+  "20TX", "00", "20TX|C1",
+  "20TX", "01", "20TX|C2",
+  "20VP", "00", "20VP|C1",
+  "20VP", "01", "20VP|C2",
+  "23FD", "00", "23FD|C1",
+  "24MW", "00", "24MW|C1",
+  "24TC", "00", "24TC|C1",
+  "27PR", "00", "27PR|C1"
+)
+
+amsterdam_multi_data <- achievement_data |>
+  filter(GEMEENTENAAM == "Amsterdam") |>
+  inner_join(
+    amsterdam_ovt_lookup,
+    by = c("INSTELLINGSCODE", "VESTIGINGSCODE")
+  ) |>
+  left_join(
+    school_weight_data |>
+      select(OVT, schoolweging),
+    by = "OVT"
+  ) |>
+  # A few DUO site names are copies of the parent institution's name.
+  # These location names were checked against their postal addresses.
+  mutate(
+    INSTELLINGSNAAM_VESTIGING = case_when(
+      INSTELLINGSCODE == "18UH" & VESTIGINGSCODE == "01" ~
+        "De Kleine Reus",
+      INSTELLINGSCODE == "20TX" & VESTIGINGSCODE == "01" ~
+        "De Scholekster",
+      INSTELLINGSCODE == "20VP" & VESTIGINGSCODE == "01" ~
+        "Leonardo da Vinci",
+      TRUE ~ INSTELLINGSNAAM_VESTIGING
+    )
+  ) |>
+  select(-n_achievement_locations, -OVT)
+
+stopifnot(
+  nrow(amsterdam_multi_data) == 21,
+  all(!is.na(amsterdam_multi_data$schoolweging))
+)
+
+school_data <- bind_rows(
+  single_location_data,
+  amsterdam_multi_data
+)
+
+# Should be 198 joined Amsterdam locations (190 with usable test data).
+stopifnot(
+  nrow(filter(school_data, GEMEENTENAAM == "Amsterdam")) == 198
+)
 
 
 # 3. Put schools with similar schoolweging into the same group
@@ -305,264 +386,391 @@ amsterdam_results |>
 
 
 
-```{r amsterdam-profile-plot, fig.width=7, fig.height=8, warning=FALSE, message=FALSE}
+### Exploratory graph: differences from separate subject benchmarks
 
-# Use the average number of pupils tested across maths and reading
-amsterdam_results <- amsterdam_results |>
-  mutate(
-    n_students = (math_total + reading_total) / 2
-  )
-
-x_min <- min(amsterdam_results$relative_math, na.rm = TRUE)
-x_max <- max(amsterdam_results$relative_math, na.rm = TRUE)
-y_min <- min(amsterdam_results$relative_reading, na.rm = TRUE)
-y_max <- max(amsterdam_results$relative_reading, na.rm = TRUE)
-
-x_pad <- 0.06 * (x_max - x_min)
-y_pad <- 0.06 * (y_max - y_min)
-
-# Create achievement profile
-amsterdam_results <- amsterdam_results |>
-  mutate(
-    profile = case_when(
-      relative_math >= 0 & relative_reading >= 0 ~
-        "Strong in both",
-
-      relative_math >= 0 & relative_reading < 0 ~
-        "Maths strength",
-
-      relative_math < 0 & relative_reading >= 0 ~
-        "Reading strength",
-
-      TRUE ~
-        "Below benchmark in both"
-    )
-  )
-
-# Create hover information
-amsterdam_results <- amsterdam_results |>
-  mutate(
-    hover_text = paste0(
-      "<b>", INSTELLINGSNAAM_VESTIGING, "</b>",
-      "<br><br>",
-
-      "<b>Pupils tested</b>",
-      "<br>",
-      "Mathematics: ", round(math_total),
-      "<br>",
-      "Reading: ", round(reading_total),
-
-      "<br><br>",
-
-      "<b>Mathematics</b>",
-      "<br>",
-      "1S attainment: ", round(math_1s_pct, 1), "%",
-      "<br>",
-      "Benchmark: ", round(benchmark_math, 1), "%",
-      "<br>",
-      "Relative to benchmark: ",
-      if_else(relative_math >= 0, "+", ""),
-      round(relative_math, 1), " percentage points",
-
-      "<br><br>",
-
-      "<b>Reading</b>",
-      "<br>",
-      "2F attainment: ", round(reading_2f_pct, 1), "%",
-      "<br>",
-      "Benchmark: ", round(benchmark_reading, 1), "%",
-      "<br>",
-      "Relative to benchmark: ",
-      if_else(relative_reading >= 0, "+", ""),
-      round(relative_reading, 1), " percentage points",
-
-      "<br><br>",
-      "<b>Profile:</b> ", profile
-    )
-  )
-
-# Determine plot limits for quadrant labels
-x_limit <- max(
-  abs(amsterdam_results$relative_math),
-  na.rm = TRUE
-)
-
-y_limit <- max(
-  abs(amsterdam_results$relative_reading),
-  na.rm = TRUE
-)
-
-# Create ggplot
-profile_plot <- amsterdam_results |>
-  ggplot(
-    aes(
-      x = relative_math,
-      y = relative_reading,
-      size = n_students,
-      colour = profile,
-      text = hover_text
-    )
-  ) +
-
-  # National benchmark lines
-  geom_hline(
-    yintercept = 0,
-    linetype = "dashed",
-    linewidth = 0.5,
-    colour = "grey50"
-  ) +
-
-  geom_vline(
-    xintercept = 0,
-    linetype = "dashed",
-    linewidth = 0.5,
-    colour = "grey50"
-  ) +
-
-  # Schools
-  geom_point(
-    alpha = 0.75
-  ) +
-
-  # Colourblind-friendly profile colours
-  scale_colour_manual(
-    values = c(
-      "Strong in both" = "#009E73",
-      "Maths strength" = "#0072B2",
-      "Reading strength" = "#CC79A7",
-      "Below benchmark in both" = "#D55E00"
-    )
-  ) +
-
-  # Smaller point-size range
-  scale_size_continuous(
-    range = c(2.5, 7),
-    name = "Average pupils tested"
-  ) +
-
-  scale_x_continuous(
-    expand = expansion(mult = 0.08)
-  ) +
-
-  scale_y_continuous(
-    expand = expansion(mult = 0.08)
-  ) +
-
-  # Quadrant labels
-  annotate(
-    "text",
-    x = x_max - x_pad,
-    y = y_max - y_pad,
-    label = "Strong in both",
-    fontface = "bold",
-    colour = "grey35",
-    size = 3.5,
-    hjust = 1
-  ) +
-
-  annotate(
-    "text",
-    x = x_min + x_pad,
-    y = y_max - y_pad,
-    label = "Reading strength",
-    fontface = "bold",
-    colour = "grey35",
-    size = 3.5,
-    hjust = 0
-  ) +
-
-  annotate(
-    "text",
-    x = x_max - x_pad,
-    y = y_min + y_pad,
-    label = "Maths strength",
-    fontface = "bold",
-    colour = "grey35",
-    size = 3.5,
-    hjust = 1
-  ) +
-
-  annotate(
-    "text",
-    x = x_min + x_pad,
-    y = y_min + y_pad,
-    label = "Below benchmark\nin both",
-    fontface = "bold",
-    colour = "grey35",
-    size = 3.5,
-    hjust = 0
-  ) +
-
+```{r initial-exploration, echo=FALSE, fig.width=8, fig.height=5, warning=FALSE, message=FALSE}
+amsterdam_results |>
+  filter(is.finite(relative_math), is.finite(relative_reading)) |>
+  ggplot(aes(x = relative_math, y = relative_reading)) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey55") +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey55") +
+  geom_point(colour = "#4F7289", alpha = 0.6, size = 2.4) +
   labs(
-    title = "Amsterdam schools show different achievement profiles",
-    subtitle = paste0(
-      "Mathematics and reading performance relative to Dutch schools ",
-      "with similar school weighting\n",
-      "0 = benchmark for schools in the same school-weighting group"
-    ),
-    x = "Mathematics relative to benchmark (percentage points)",
-    y = "Reading relative to benchmark (percentage points)",
-    colour = "Achievement profile"
+    title = "First look: Amsterdam schools differ by subject",
+    subtitle = "Percentage-point differences from separate national benchmarks",
+    x = "Mathematics versus same-weighting schools (pp)",
+    y = "Reading versus same-weighting schools (pp)"
   ) +
+  theme_minimal(base_size = 11)
+```
 
-  theme_minimal(base_size = 11) +
+This first plot revealed different achievement profiles but did not isolate schools with *atypical reading attainment conditional on their mathematics attainment*. The final visualization addresses that question directly.
 
-  theme(
-    legend.position = "right",
-    legend.box = "vertical",
-    panel.grid.minor = element_blank(),
+## Final explanatory visualization
 
-    plot.title = element_text(
-      face = "bold",
-      size = 15
+We resolved an initial school-identifier mismatch: 21 Amsterdam locations that had been excluded by an institution-level uniqueness filter were matched to the corresponding school-weighting clusters. This raises Amsterdam coverage from 169 to 190 locations with usable results (out of 203 originally observed).
+
+**How to read it.** The fitted line is the national relationship between mathematics 1S and reading 2F attainment. The inner light-grey area is a 90% prediction interval for an individual school, and the wider darker-grey area is the 95% interval. Grey circles are within 90%; light-blue shapes fall outside 90% but remain inside 95%; dark-blue shapes fall outside 95%. Diamonds are relatively reading-leaning (above the upper boundary), while triangles are relatively maths-leaning (below the lower boundary). Marker size reflects pupils tested.
+
+The slider defaults to the school-weighting band containing the most 95%-level departures and excludes bands without such departures from its focused choices. **ALL DATA** remains available for context, but its fitted line uses all Dutch schools without conditioning on school weighting. Small bands with fewer than 20 national schools are omitted from the band-by-band comparisons.
+
+```{r amsterdam-complete-explanatory, echo=FALSE, warning=FALSE, message=FALSE}
+# Full data preparation + corrected location join + explanatory plot
+# Run inside the existing R Markdown project. No older plot objects are needed.
+
+library(dplyr)
+library(stringr)
+library(tibble)
+library(purrr)
+library(plotly)
+
+# The existing setup normally loads these through scripts/01-get-data.R.
+if (!exists("referentieniveaus") || !exists("schoolweging")) {
+  source(here::here("scripts", "01-get-data.R"))
+}
+
+# ----- Settings -----
+focus_cutoff <- 95                 # 90 or 95; changes which bands appear
+hide_quiet_bands <- TRUE          # FALSE = show all eligible weighting bands
+min_reference_schools <- 20L     # Minimum national sample in each band
+
+# ----- 1. Calculate attainment for every Dutch school location -----
+count_cols <- c(
+  "REKENEN_LAGER1F", "REKENEN_1F", "REKENEN_1S", "REKENEN_2F",
+  "LV_LAGER1F", "LV_1F", "LV_2F"
+)
+
+achievement_data <- referentieniveaus |>
+  mutate(
+    across(
+      all_of(count_cols),
+      \(x) as.numeric(ifelse(as.character(x) == "<5", "2.5", x))
     ),
+    math_total = REKENEN_LAGER1F + REKENEN_1F + REKENEN_1S + REKENEN_2F,
+    reading_total = LV_LAGER1F + LV_1F + LV_2F,
+    math_1s_pct = 100 * REKENEN_1S / math_total,
+    reading_2f_pct = 100 * LV_2F / reading_total
+  ) |>
+  add_count(INSTELLINGSCODE, name = "n_achievement_locations")
 
-    plot.subtitle = element_text(
-      size = 10,
-      colour = "grey35"
-    ),
+# ----- 2. Join school weighting without mixing up locations -----
+# OVT's C1/C2 suffix is NOT directly the DUO vestigingscode.
+weight_data <- schoolweging |>
+  mutate(INSTELLINGSCODE = str_extract(OVT, "^[^|]+")) |>
+  select(INSTELLINGSCODE, OVT, schoolweging) |>
+  add_count(INSTELLINGSCODE, name = "n_weight_locations")
 
-    axis.title = element_text(
-      face = "bold"
-    )
-  )
+# Unambiguous national records can be joined directly on the institution code.
+single_location_data <- achievement_data |>
+  filter(n_achievement_locations == 1) |>
+  inner_join(
+    weight_data |>
+      filter(n_weight_locations == 1) |>
+      select(INSTELLINGSCODE, schoolweging),
+    by = "INSTELLINGSCODE"
+  ) |>
+  select(-n_achievement_locations)
 
-# Convert to interactive Plotly plot
-profile_plotly <- ggplotly(
-  profile_plot,
-  tooltip = "text",
-  width = 1000,
-  height = 750
-) |>
-  layout(
-    margin = list(
-      t = 95,
-      r = 230,
-      b = 70,
-      l = 80
-    ),
-    legend = list(
-      orientation = "v",
-      x = 1.02,
-      xanchor = "left",
-      y = 0.15,
-      yanchor = "bottom"
+# Audited crosswalk for the 21 Amsterdam locations excluded by the old join.
+amsterdam_ovt_lookup <- tribble(
+  ~INSTELLINGSCODE, ~VESTIGINGSCODE, ~OVT,
+  "04IU", "00", "04IU|C1",
+  "07TJ", "00", "07TJ|C1",
+  "07TJ", "02", "07TJ|C2",
+  "09DD", "00", "09DD|C1",
+  "14JC", "00", "14JC|C1",
+  "14JC", "01", "14JC|C2",
+  "18UH", "00", "18UH|C1",
+  "18UH", "01", "18UH|C2",
+  "18WK", "00", "18WK|C1",
+  "18YT", "00", "18YT|C1",
+  "20SK", "00", "20SK|C1",
+  "20SL", "00", "20SL|C1",
+  "20TR", "00", "20TR|C1",
+  "20TX", "00", "20TX|C1",
+  "20TX", "01", "20TX|C2",
+  "20VP", "00", "20VP|C1",
+  "20VP", "01", "20VP|C2",
+  "23FD", "00", "23FD|C1",
+  "24MW", "00", "24MW|C1",
+  "24TC", "00", "24TC|C1",
+  "27PR", "00", "27PR|C1"
+)
+
+recovered_locations <- achievement_data |>
+  filter(GEMEENTENAAM == "Amsterdam") |>
+  inner_join(
+    amsterdam_ovt_lookup,
+    by = c("INSTELLINGSCODE", "VESTIGINGSCODE")
+  ) |>
+  left_join(weight_data |> select(OVT, schoolweging), by = "OVT") |>
+  mutate(
+    INSTELLINGSNAAM_VESTIGING = case_when(
+      INSTELLINGSCODE == "18UH" & VESTIGINGSCODE == "01" ~ "De Kleine Reus",
+      INSTELLINGSCODE == "20TX" & VESTIGINGSCODE == "01" ~ "De Scholekster",
+      INSTELLINGSCODE == "20VP" & VESTIGINGSCODE == "01" ~ "Leonardo da Vinci",
+      TRUE ~ INSTELLINGSNAAM_VESTIGING
     )
   ) |>
-  config(
-    displaylogo = FALSE
+  select(-OVT, -n_achievement_locations)
+
+stopifnot(
+  nrow(recovered_locations) == 21L,
+  all(!is.na(recovered_locations$schoolweging))
+)
+
+school_data <- bind_rows(single_location_data, recovered_locations) |>
+  mutate(weighting_band = round(schoolweging / 2) * 2)
+
+# Includes Amsterdam's 21 recovered locations; other ambiguous Dutch
+# multi-location institutions still require their own location crosswalks.
+national_scores <- school_data |>
+  filter(
+    is.finite(math_1s_pct), is.finite(reading_2f_pct),
+    is.finite(schoolweging), math_total > 0, reading_total > 0,
+    between(math_1s_pct, 0, 100), between(reading_2f_pct, 0, 100)
+  ) |>
+  mutate(n_students = (math_total + reading_total) / 2)
+
+amsterdam_scores <- national_scores |>
+  filter(GEMEENTENAAM == "Amsterdam")
+
+stopifnot(nrow(amsterdam_scores) == 190L)
+
+size_range <- range(amsterdam_scores$n_students)
+amsterdam_scores <- amsterdam_scores |>
+  mutate(
+    marker_size = 8 + 11 * sqrt(
+      (n_students - size_range[1]) / max(diff(size_range), 1)
+    )
   )
 
-profile_plotly
+# ----- 3. Fit national regression and both prediction intervals -----
+make_view <- function(band = NULL) {
+  reference <- if (is.null(band)) national_scores else
+    filter(national_scores, weighting_band == band)
+  amsterdam <- if (is.null(band)) amsterdam_scores else
+    filter(amsterdam_scores, weighting_band == band)
+
+  if (nrow(reference) < min_reference_schools ||
+      n_distinct(reference$math_1s_pct) < 5L) return(NULL)
+
+  model <- lm(reading_2f_pct ~ math_1s_pct, data = reference)
+  pi_at <- \(df, level) as_tibble(
+    predict(model, newdata = df, interval = "prediction", level = level)
+  )
+
+  p95 <- pi_at(amsterdam, 0.95) |> rename(lwr95 = lwr, upr95 = upr)
+  p90 <- pi_at(amsterdam, 0.90) |>
+    transmute(lwr90 = lwr, upr90 = upr)
+
+  schools <- bind_cols(amsterdam, p95, p90) |>
+    mutate(
+      profile = case_when(
+        reading_2f_pct > upr95 ~ "Reading beyond 95%",
+        reading_2f_pct < lwr95 ~ "Maths beyond 95%",
+        reading_2f_pct > upr90 ~ "Reading outside 90%",
+        reading_2f_pct < lwr90 ~ "Maths outside 90%",
+        TRUE ~ "Within 90%"
+      ),
+      hover = paste0(
+        "<b>", INSTELLINGSNAAM_VESTIGING, "</b>",
+        "<br>Weighting: ", round(schoolweging, 2),
+        " (band ", weighting_band, ")",
+        "<br>Maths pupils: ", round(math_total),
+        " | Reading pupils: ", round(reading_total),
+        "<br><br>Maths 1S: ", round(math_1s_pct, 1), "%",
+        "<br>Reading 2F: ", round(reading_2f_pct, 1), "%",
+        "<br>Expected reading: ", round(fit, 1), "%",
+        "<br>90% range: ", round(pmax(0, lwr90), 1), "–",
+        round(pmin(100, upr90), 1), "%",
+        "<br>95% range: ", round(pmax(0, lwr95), 1), "–",
+        round(pmin(100, upr95), 1), "%",
+        "<br><b>", profile, "</b>"
+      )
+    )
+
+  grid <- tibble(math_1s_pct = seq(0, 100, length.out = 160))
+  curve <- bind_cols(
+    grid,
+    pi_at(grid, 0.95) |> rename(lwr95 = lwr, upr95 = upr),
+    pi_at(grid, 0.90) |> transmute(lwr90 = lwr, upr90 = upr)
+  ) |>
+    mutate(across(starts_with("lwr"), \(x) pmax(0, x))) |>
+    mutate(across(starts_with("upr"), \(x) pmin(100, x)))
+
+  n95 <- sum(grepl("beyond 95%", schools$profile))
+  n90 <- sum(grepl("outside 90%", schools$profile))
+  label <- if (is.null(band)) "ALL DATA" else paste("Band", band)
+  subtitle <- if (is.null(band)) "Pooled national reference (not weighting-adjusted)" else
+    paste0("National reference in school-weighting band ", band)
+
+  list(
+    schools = schools, curve = curve, label = label, band = band,
+    n95 = n95, n90 = n90,
+    title = paste0(
+      "<b>", n95, " of ", nrow(schools),
+      " Amsterdam schools fall outside the 95% range</b>",
+      "<br><sup>", subtitle, " (", nrow(reference), " Dutch schools). ",
+      "Darker markers indicate larger departures.</sup>"
+    )
+  )
+}
+
+band_values <- amsterdam_scores |>
+  distinct(weighting_band) |>
+  arrange(weighting_band) |>
+  pull(weighting_band)
+
+band_views <- map(band_values, make_view) |> compact()
+if (hide_quiet_bands) {
+  band_views <- keep(band_views, \(x) {
+    if (focus_cutoff == 95) x$n95 > 0 else x$n95 + x$n90 > 0
+  })
+}
+views <- c(list(make_view()), band_views)
+
+# Open on the most interesting weighting band; ALL DATA is still slider stop 1.
+initial_view <- if (length(band_views)) {
+  1L + which.max(map_dbl(band_views, "n95"))
+} else 1L
+
+# ----- 4. Interactive Plotly chart -----
+styles <- list(
+  "Within 90%" = list("circle", "#969DA5", 0.42),
+  "Reading outside 90%" = list("diamond", "#87AFD0", 0.90),
+  "Maths outside 90%" = list("triangle-up", "#87AFD0", 0.90),
+  "Reading beyond 95%" = list("diamond", "#064C80", 1),
+  "Maths beyond 95%" = list("triangle-up", "#064C80", 1)
+)
+
+plot <- plot_ly()
+trace_groups <- vector("list", length(views))
+trace_count <- 0L
+
+for (i in seq_along(views)) {
+  v <- views[[i]]
+  curve_data <- v$curve
+  visible_now <- i == initial_view
+
+  # 95% region first; the lighter 90% region sits on top of it.
+  for (level in c("95", "90")) {
+    darker <- level == "95"
+    plot <- plot |>
+      add_trace(
+        x = c(curve_data$math_1s_pct, rev(curve_data$math_1s_pct)),
+        y = c(curve_data[[paste0("lwr", level)]],
+              rev(curve_data[[paste0("upr", level)]])),
+        type = "scatter", mode = "lines", fill = "toself",
+        fillcolor = if (darker) "rgba(100,110,122,0.33)" else "rgba(243,245,247,0.96)",
+        line = list(width = 0),
+        name = paste0(level, "% prediction region"),
+        hoverinfo = "skip", showlegend = TRUE, visible = visible_now
+      )
+  }
+
+  plot <- plot |>
+    add_trace(
+      x = curve_data$math_1s_pct, y = curve_data$fit,
+      type = "scatter", mode = "lines",
+      line = list(color = "#394957", width = 3),
+      name = "National relationship", hoverinfo = "skip",
+      showlegend = TRUE, visible = visible_now
+    )
+
+  trace_groups[[i]] <- trace_count + seq_len(3L)
+  trace_count <- trace_count + 3L
+
+  for (category in names(styles)) {
+    points <- filter(v$schools, profile == category)
+    style <- styles[[category]]
+    plot <- plot |>
+      add_trace(
+        x = points$math_1s_pct, y = points$reading_2f_pct,
+        text = points$hover, type = "scatter", mode = "markers",
+        name = category, hoverinfo = "text",
+        marker = list(
+          symbol = style[[1]], color = style[[2]], opacity = style[[3]],
+          size = points$marker_size,
+          line = list(color = "white", width = 0.8)
+        ),
+        showlegend = TRUE, visible = visible_now
+      )
+    trace_count <- trace_count + 1L
+    trace_groups[[i]] <- c(trace_groups[[i]], trace_count)
+  }
+}
+
+slider_steps <- map(seq_along(views), \(i) {
+  show <- rep(FALSE, trace_count)
+  show[trace_groups[[i]]] <- TRUE
+  list(
+    label = views[[i]]$label, method = "update",
+    args = list(
+      list(visible = show),
+      list(title = list(text = views[[i]]$title, x = 0.02))
+    )
+  )
+})
+
+plot <- plot |>
+  layout(
+    title = list(text = views[[initial_view]]$title, x = 0.02),
+    xaxis = list(title = "Mathematics 1S attainment (%)", range = c(0, 100),
+                 dtick = 20, zeroline = FALSE, gridcolor = "#EBEFF2"),
+    yaxis = list(title = "Reading 2F attainment (%)", range = c(0, 100),
+                 dtick = 20, zeroline = FALSE, gridcolor = "#EBEFF2"),
+    legend = list(x = 1.02, xanchor = "left", y = 1, yanchor = "top"),
+    sliders = list(list(
+      active = initial_view - 1L,
+      currentvalue = list(prefix = "View: "),
+      pad = list(t = 50), steps = slider_steps
+    )),
+    hovermode = "closest",
+    margin = list(t = 135, r = 275, b = 135, l = 85),
+    width = 1170, height = 780,
+    paper_bgcolor = "white", plot_bgcolor = "white"
+  ) |>
+  config(displaylogo = FALSE)
+
+plot
+
 ```
 
 
-The exploratory visualization shows that Amsterdam schools occupy all four possible profiles: some perform relatively strongly in both subjects, some primarily in mathematics or reading, and others fall below their comparable-school benchmark in both. This suggests that a geographic visualization of these relative subject profiles could reveal meaningful local patterns that would be hidden by a simple ranking of schools
+### Main finding and interpretation
+
+```{r main-finding, echo=FALSE, results='asis'}
+if (length(band_views) > 0L) {
+  v <- views[[initial_view]]
+
+  cat(
+    paste0(
+      "In school-weighting band ", v$band, ", ",
+      v$n95, " of ", nrow(v$schools),
+      " Amsterdam schools fall outside the 95% national ",
+      "prediction interval, with ", v$n90,
+      " additional schools outside 90% but inside 95%."
+    )
+  )
+
+} else {
+  cat(
+    "No adequately populated school-weighting band has ",
+    "an Amsterdam school outside the selected prediction ",
+    "threshold; the full-data view is shown instead."
+  )
+}
+```
+
+A school above the range has higher *reading* attainment than the national relationship would predict from its mathematics result, while a school below has relatively stronger *mathematics*. These are **descriptive flags**, not diagnoses of school quality or proof of subject-specific teaching effects. Even under a well-fitting model, some observations fall outside prediction intervals by chance, especially when many schools are examined.
+
+**Robustness and limitations.** The intervals assume a linear model and roughly stable residual variation within the compared group. The analysis replaces suppressed pupil counts (`<5`) with 2.5; repeating with 1 and 4 is needed before making strong claims. Scores can also vary by doorstroomtoets provider. Of 203 Amsterdam locations, 190 have usable attainment data and a verified location-level school-weighting match; five lack school-weighting records, and eight have no mathematics or reading test participants. The 21 locations previously excluded because of shared institution codes are included through an audited crosswalk. The national reference still excludes ambiguous multi-location institutions outside Amsterdam. The chart is most useful for selecting schools for follow-up, not ranking their overall quality.
 
 
 
 ---
 
-```{r lint}
+```{r lint, eval=FALSE}
 lint(rstudioapi::getSourceEditorContext()$path)
 ```
