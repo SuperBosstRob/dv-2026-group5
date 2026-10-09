@@ -54,29 +54,11 @@ source(here("scripts", "01-get-data.R"))
 
 ## Research question
 
-*What is your research question? Is it a question of analytics, inference or prediction? Who is the target audience for your final visualization, and how does that shape your choices?*
-
 #### RQ
 Among primary schools in Amsterdam in 2024-2025, which schools show stronger attainment in mathematics versus reading (or the other way around), compared with similarly disadvantaged schools?
 
 #### Type of Analysis
-We will compare each school's percentage of pupils reaching the higher reference level in mathematics (1S) and reading (2F) with the typical performance of Dutch schools with a similar schoolweging. As such, the RQ is a question of analytics because the goal is to describe and compare school performance from existing data, not to estimate a relationship or predict future outcomes.
-
-#### Target Audience
-This information is valuable for the educational inspectorate of Amsterdam and possibly local school boards.
-
-
-## Exploratory process
-
-*Describe how you explored the data. Include at least one exploratory visualization below, and a short note on what it shows, and what you learned from it about your research question.*
-
-## Research question
-
-#### RQ
-Among primary schools in Amsterdam in 2024-2025, which schools show stronger attainment in mathematics versus reading (or the other way around), compared with similarly disadvantaged schools?
-
-#### Type of Analysis
-We will compare each school's mathematics 1S and reading 2F attainment with the national relationship between these two measures, estimated among Dutch schools with a similar schoolweging. The fitted line is a descriptive benchmark, rather than a model for forecasting future outcomes. Our research question remains analytical: the goal is to identify schools whose subject profiles differ noticeably from the national pattern.
+We will compare each school's mathematics 1S and reading 2F attainment with the national relationship between these two measures, estimated among Dutch schools with a similar schoolweging. The fitted line is a descriptive benchmark, rather than a model for forecasting future outcomes. Our research question is analytical: the goal is to identify schools whose subject profiles differ noticeably from the national pattern.
 
 #### Target Audience
 This information is valuable for the educational inspectorate of Amsterdam and possibly local school boards.
@@ -406,7 +388,7 @@ amsterdam_results |>
 
 This first plot revealed different achievement profiles but did not isolate schools with *atypical reading attainment conditional on their mathematics attainment*. The final visualization addresses that question directly.
 
-## Final explanatory visualization
+## Explanatory visualization
 
 We resolved an initial school-identifier mismatch: 21 Amsterdam locations that had been excluded by an institution-level uniqueness filter were matched to the corresponding school-weighting clusters. This raises Amsterdam coverage from 169 to 190 locations with usable results (out of 203 originally observed).
 
