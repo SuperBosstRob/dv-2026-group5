@@ -24,7 +24,7 @@
 
 This project investigates how primary schools in Amsterdam perform in mathematics and reading relative to Dutch schools with a similar schoolweging, rather than comparing raw achievement percentages alone.
 We calculate each school’s relative performance for maths 1S and reading 2F, allowing schools to be identified as stronger in maths, stronger in reading, strong in both, or below benchmark in both.
-The final goal is to present these patterns in a geographic visualization that is useful for municipal education officers and school boards.
+The final goal is to present these patterns in a visualization that is useful for municipal education officers and school boards.
 
 
 ## Cloning this project
