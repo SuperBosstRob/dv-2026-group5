@@ -1,6 +1,6 @@
 ---
-title: "DV Assignment 2: [Your Title Here]"
-author: "Group X: Firstname Lastname, Firstname Lastname, Firstname Lastname"
+title: "DV Assignment 2: Beyond the Benchmark "
+author: "Group 5: Robert Rotaru, Nicusor Simionescu, Danielius Rimas"
 date: "`r Sys.Date()`"
 output:
   html_document:
